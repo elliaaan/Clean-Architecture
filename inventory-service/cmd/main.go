@@ -4,28 +4,30 @@ import (
 	"inventory-service/db"
 	"inventory-service/internal/product"
 
-	"github.com/gin-gonic/gin"
+	pb "github.com/elliaaan/proto-gen/pb/inventory"
+
+	"log"
+	"net"
+
+	"google.golang.org/grpc"
 )
 
 func main() {
-	// 1 Initialize database connection
+	lis, err := net.Listen("tcp", ":8080")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
 	database := db.InitDB()
-
-	// 2️ Set up the Repository layer (talks to DB)
 	repo := &product.Repository{DB: database}
-
-	// 3️ Set up the Service layer (business logic)
 	service := &product.Service{Repo: repo}
+	server := &product.GRPCServer{Service: service}
 
-	// 4️ Set up the Handler layer (HTTP layer)
-	handler := &product.Handler{Service: service}
+	grpcServer := grpc.NewServer()
+	pb.RegisterInventoryServiceServer(grpcServer, server)
 
-	// 5️ Create Gin router
-	r := gin.Default()
-
-	// 6️ Register product routes (CRUD operations)
-	handler.RegisterRoutes(r)
-
-	// 7️ Start Inventory Service on port 8080
-	r.Run(":8080")
+	log.Println("Inventory gRPC service running on port 8080...")
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 }
