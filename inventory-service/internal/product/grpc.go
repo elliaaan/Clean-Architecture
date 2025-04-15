@@ -4,7 +4,7 @@ import (
 	"context"
 	"inventory-service/models"
 
-	pb "github.com/elliaaan/proto-gen/pb/inventory"
+	pb "github.com/elliaaan/proto-gen/pb/inventory/github.com/elliaaan/proto-gen/pb/inventory"
 )
 
 type GRPCServer struct {

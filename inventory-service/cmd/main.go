@@ -4,10 +4,10 @@ import (
 	"inventory-service/db"
 	"inventory-service/internal/product"
 
-	pb "github.com/elliaaan/proto-gen/pb/inventory"
-
 	"log"
 	"net"
+
+	pb "github.com/elliaaan/proto-gen/pb/inventory/github.com/elliaaan/proto-gen/pb/inventory"
 
 	"google.golang.org/grpc"
 )

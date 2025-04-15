@@ -1,92 +1,143 @@
 package main
 
 import (
-	"io"
+	"api-gateway/internal/inventory"
+	"api-gateway/internal/order"
+	"log"
 	"net/http"
+	"strconv"
 
+	orderpb "github.com/elliaaan/proto-gen/pb/order/github.com/elliaaan/proto-gen/pb/order"
 	"github.com/gin-gonic/gin"
-	"github.com/go-resty/resty/v2"
 )
 
 func main() {
-	// Create a Gin router instance
 	r := gin.Default()
 
-	// Initialize Resty HTTP client for forwarding requests
-	client := resty.New()
+	// gRPC-клиенты
+	invClient := inventory.NewInventoryClient("localhost:8080")
+	orderClient := order.NewOrderClient("localhost:8081")
 
-	// 🔽 INVENTORY SERVICE ROUTING (localhost:8080)
-	inventoryURL := "http://localhost:8080"
-
-	// GET /products → forwards to inventory-service
 	r.GET("/products", func(c *gin.Context) {
-		forwardGet(c, client, inventoryURL+"/products")
-	})
-
-	// 🔽 ORDER SERVICE ROUTING (localhost:8081)
-	orderURL := "http://localhost:8081"
-
-	// POST /orders → create new order
-	r.POST("/orders", func(c *gin.Context) {
-		forwardBody(c, client, orderURL+"/orders", http.MethodPost)
-	})
-
-	// GET /orders?user_id=1 → get orders by user
-	r.GET("/orders", func(c *gin.Context) {
-		userID := c.Query("user_id")
-		url := orderURL + "/orders"
-		if userID != "" {
-			url += "?user_id=" + userID
+		products, err := invClient.ListProducts()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
-		forwardGet(c, client, url)
+		c.JSON(http.StatusOK, products)
 	})
 
-	// GET /orders/:id → get order by ID
+	r.POST("/orders", func(c *gin.Context) {
+		var req struct {
+			UserID     uint64  `json:"user_id"`
+			ProductID  uint64  `json:"product_id"`
+			Quantity   uint32  `json:"quantity"`
+			TotalPrice float64 `json:"total_price"`
+			Status     string  `json:"status"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		order := &orderpb.Order{
+			UserId:     req.UserID,
+			ProductId:  req.ProductID,
+			Quantity:   req.Quantity,
+			TotalPrice: req.TotalPrice,
+			Status:     req.Status,
+		}
+
+		res, err := orderClient.CreateOrder(order)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusCreated, res.Order)
+	})
+
+	r.GET("/orders", func(c *gin.Context) {
+		res, err := orderClient.ListOrders()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, res.Orders)
+	})
+
 	r.GET("/orders/:id", func(c *gin.Context) {
-		id := c.Param("id")
-		forwardGet(c, client, orderURL+"/orders/"+id)
+		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
+			return
+		}
+
+		res, err := orderClient.GetOrderByID(id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, res.Order)
 	})
 
-	// PATCH /orders/:id → update order status
-	r.PATCH("/orders/:id", func(c *gin.Context) {
-		id := c.Param("id")
-		forwardBody(c, client, orderURL+"/orders/"+id, http.MethodPatch)
+	r.PUT("/orders/:id", func(c *gin.Context) {
+		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
+			return
+		}
+
+		var req struct {
+			UserID     uint64  `json:"user_id"`
+			ProductID  uint64  `json:"product_id"`
+			Quantity   uint32  `json:"quantity"`
+			TotalPrice float64 `json:"total_price"`
+			Status     string  `json:"status"`
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		order := &orderpb.Order{
+			Id:         id,
+			UserId:     req.UserID,
+			ProductId:  req.ProductID,
+			Quantity:   req.Quantity,
+			TotalPrice: req.TotalPrice,
+			Status:     req.Status,
+		}
+
+		res, err := orderClient.UpdateOrder(order)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, res.Order)
 	})
 
-	// Start the API Gateway on port 8090
+	r.DELETE("/orders/:id", func(c *gin.Context) {
+		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
+			return
+		}
+
+		_, err = orderClient.DeleteOrder(id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Order deleted"})
+	})
+
+	log.Println("API Gateway is running on port 8090")
 	r.Run(":8090")
-}
-
-// Helper function to forward GET requests to microservices
-func forwardGet(c *gin.Context, client *resty.Client, url string) {
-	resp, err := client.R().Get(url)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.Data(resp.StatusCode(), resp.Header().Get("Content-Type"), resp.Body())
-}
-
-// Helper function to forward POST and PATCH requests with body
-func forwardBody(c *gin.Context, client *resty.Client, url string, method string) {
-	body, _ := io.ReadAll(c.Request.Body)
-	req := client.R().
-		SetHeader("Content-Type", "application/json").
-		SetBody(body)
-
-	var resp *resty.Response
-	var err error
-
-	switch method {
-	case http.MethodPost:
-		resp, err = req.Post(url)
-	case http.MethodPatch:
-		resp, err = req.Patch(url)
-	}
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.Data(resp.StatusCode(), resp.Header().Get("Content-Type"), resp.Body())
 }
