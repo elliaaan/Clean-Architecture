@@ -18,8 +18,8 @@ func InitDB() *gorm.DB {
 		panic("failed to connect to PostgreSQL database")
 	}
 
-	// 3️ Auto-migrate the Product model (create table if not exists)
-	db.AutoMigrate(&models.Product{})
+	db.Migrator().DropTable(&models.Product{}) // удалить старую таблицу
+	db.AutoMigrate(&models.Product{})          // создать заново с новым autoIncrement
 
 	// 4️ Return DB object to be used in Repository
 	return db
