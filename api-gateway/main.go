@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	inventorypb "github.com/elliaaan/proto-gen/pb/inventory/github.com/elliaaan/proto-gen/pb/inventory"
 	orderpb "github.com/elliaaan/proto-gen/pb/order/github.com/elliaaan/proto-gen/pb/order"
 	"github.com/gin-gonic/gin"
 )
@@ -14,48 +15,93 @@ import (
 func main() {
 	r := gin.Default()
 
-	// gRPC-клиенты
 	invClient := inventory.NewInventoryClient("localhost:8080")
 	orderClient := order.NewOrderClient("localhost:8081")
 
-	r.GET("/products", func(c *gin.Context) {
-		products, err := invClient.ListProducts()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, products)
-	})
+	// ============ INVENTORY ============
 
-	r.POST("/orders", func(c *gin.Context) {
-		var req struct {
-			UserID     uint64  `json:"user_id"`
-			ProductID  uint64  `json:"product_id"`
-			Quantity   uint32  `json:"quantity"`
-			TotalPrice float64 `json:"total_price"`
-			Status     string  `json:"status"`
-		}
-
+	r.POST("/products", func(c *gin.Context) {
+		var req inventorypb.Product
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-
-		order := &orderpb.Order{
-			UserId:     req.UserID,
-			ProductId:  req.ProductID,
-			Quantity:   req.Quantity,
-			TotalPrice: req.TotalPrice,
-			Status:     req.Status,
-		}
-
-		res, err := orderClient.CreateOrder(order)
+		res, err := invClient.CreateProduct(&req)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		c.JSON(http.StatusCreated, res)
+	})
 
-		c.JSON(http.StatusCreated, res.Order)
+	r.GET("/products/:id", func(c *gin.Context) {
+		id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+		res, err := invClient.GetProductByID(id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, res)
+	})
+
+	r.GET("/products", func(c *gin.Context) {
+		res, err := invClient.ListProducts()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, res)
+	})
+
+	r.PUT("/products/:id", func(c *gin.Context) {
+		var req inventorypb.Product
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		req.Id, _ = strconv.ParseUint(c.Param("id"), 10, 64)
+		res, err := invClient.UpdateProduct(&req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, res)
+	})
+
+	r.DELETE("/products/:id", func(c *gin.Context) {
+		id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+		_, err := invClient.DeleteProduct(id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusNoContent, nil)
+	})
+
+	// ============ ORDER ============
+
+	r.POST("/orders", func(c *gin.Context) {
+		var req orderpb.Order
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		res, err := orderClient.CreateOrder(&req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, res)
+	})
+
+	r.GET("/orders/:id", func(c *gin.Context) {
+		id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+		res, err := orderClient.GetOrderByID(id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, res)
 	})
 
 	r.GET("/orders", func(c *gin.Context) {
@@ -64,80 +110,34 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		c.JSON(http.StatusOK, res.Orders)
-	})
-
-	r.GET("/orders/:id", func(c *gin.Context) {
-		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
-			return
-		}
-
-		res, err := orderClient.GetOrderByID(id)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		c.JSON(http.StatusOK, res.Order)
+		c.JSON(http.StatusOK, res)
 	})
 
 	r.PUT("/orders/:id", func(c *gin.Context) {
-		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
-			return
-		}
-
-		var req struct {
-			UserID     uint64  `json:"user_id"`
-			ProductID  uint64  `json:"product_id"`
-			Quantity   uint32  `json:"quantity"`
-			TotalPrice float64 `json:"total_price"`
-			Status     string  `json:"status"`
-		}
-
+		var req orderpb.Order
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-
-		order := &orderpb.Order{
-			Id:         id,
-			UserId:     req.UserID,
-			ProductId:  req.ProductID,
-			Quantity:   req.Quantity,
-			TotalPrice: req.TotalPrice,
-			Status:     req.Status,
-		}
-
-		res, err := orderClient.UpdateOrder(order)
+		req.Id, _ = strconv.ParseUint(c.Param("id"), 10, 64)
+		res, err := orderClient.UpdateOrder(&req)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		c.JSON(http.StatusOK, res.Order)
+		c.JSON(http.StatusOK, res)
 	})
 
 	r.DELETE("/orders/:id", func(c *gin.Context) {
-		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid order ID"})
-			return
-		}
-
-		_, err = orderClient.DeleteOrder(id)
+		id, _ := strconv.ParseUint(c.Param("id"), 10, 64)
+		_, err := orderClient.DeleteOrder(id)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "Order deleted"})
+		c.JSON(http.StatusNoContent, nil)
 	})
 
-	log.Println("API Gateway is running on port 8090")
+	log.Println("API Gateway running on port 8090...")
 	r.Run(":8090")
 }

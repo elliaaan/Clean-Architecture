@@ -9,52 +9,55 @@ import (
 	"google.golang.org/grpc"
 )
 
-type OrderClient struct {
-	client pb.OrderServiceClient
+type Client struct {
+	conn   *grpc.ClientConn
+	Client pb.OrderServiceClient
 }
 
-func NewOrderClient(address string) *OrderClient {
-	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(time.Second*5))
+func NewOrderClient(address string) *Client {
+	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
-		log.Fatalf("could not connect to order service: %v", err)
+		log.Fatalf("Failed to connect to order service: %v", err)
 	}
+	client := pb.NewOrderServiceClient(conn)
+	return &Client{conn: conn, Client: client}
+}
 
-	return &OrderClient{
-		client: pb.NewOrderServiceClient(conn),
+func (c *Client) CreateOrder(order *pb.Order) (*pb.OrderResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
+
+	return c.Client.CreateOrder(ctx, &pb.CreateOrderRequest{Order: order})
+}
+
+func (c *Client) GetOrderByID(id uint64) (*pb.OrderResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
+
+	return c.Client.GetOrderByID(ctx, &pb.GetOrderRequest{Id: id})
+}
+
+func (c *Client) UpdateOrder(order *pb.Order) (*pb.OrderResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
+
+	return c.Client.UpdateOrder(ctx, &pb.UpdateOrderRequest{Order: order})
+}
+
+func (c *Client) DeleteOrder(id uint64) (*pb.Empty, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
+
+	return c.Client.DeleteOrder(ctx, &pb.DeleteOrderRequest{Id: id})
+}
+
+func (c *Client) ListOrders() ([]*pb.Order, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
+
+	res, err := c.Client.ListOrders(ctx, &pb.ListOrdersRequest{})
+	if err != nil {
+		return nil, err
 	}
-}
-
-func (o *OrderClient) CreateOrder(order *pb.Order) (*pb.OrderResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-
-	return o.client.CreateOrder(ctx, &pb.CreateOrderRequest{Order: order})
-}
-
-func (o *OrderClient) GetOrderByID(id uint64) (*pb.OrderResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-
-	return o.client.GetOrderByID(ctx, &pb.GetOrderRequest{Id: id})
-}
-
-func (o *OrderClient) UpdateOrder(order *pb.Order) (*pb.OrderResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-
-	return o.client.UpdateOrder(ctx, &pb.UpdateOrderRequest{Order: order})
-}
-
-func (o *OrderClient) DeleteOrder(id uint64) (*pb.Empty, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-
-	return o.client.DeleteOrder(ctx, &pb.DeleteOrderRequest{Id: id})
-}
-
-func (o *OrderClient) ListOrders() (*pb.ListOrdersResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-	defer cancel()
-
-	return o.client.ListOrders(ctx, &pb.ListOrdersRequest{})
+	return res.Orders, nil
 }
