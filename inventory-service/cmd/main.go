@@ -18,20 +18,16 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	// 1. Подключение к базе данных
 	database := db.InitDB()
 
-	// 2. Инициализация кэша (из базы)
 	itemCache := cache.NewCache(database)
 
-	// 3. Репозиторий и сервис (включая кэш)
 	repo := &product.Repository{DB: database}
 	service := &product.Service{
 		Repo:  repo,
-		Cache: itemCache, //  передаём кэш в сервис
+		Cache: itemCache,
 	}
 
-	// 4. gRPC-сервер
 	server := &product.GRPCServer{Service: service}
 
 	grpcServer := grpc.NewServer()
