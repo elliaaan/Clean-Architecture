@@ -27,7 +27,7 @@ func main() {
 	service := &order.Service{
 		Repo:  repo,
 		Cache: orderCache,
-		NATS:  natsConn, // 👈 теперь передаём NATS
+		NATS:  natsConn,
 	}
 	server := &order.GRPCServer{Service: service}
 
